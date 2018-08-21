@@ -180,6 +180,7 @@ class Site_Command extends EE_Site_Command {
 		$filter[]               = $this->site['type'];
 		$site_docker            = new Site_Docker();
 		$docker_compose_content = $site_docker->generate_docker_compose_yml( $filter );
+		$docker_compose_content = $site_docker->generate_docker_compose_yml( $filter );
 		$default_conf_content   = $default_conf_content = EE\Utils\mustache_render( SITE_TEMPLATE_ROOT . '/config/nginx/default.conf.mustache', [ 'server_name' => $this->site['name'] ] );
 
 		$env_data    = [
@@ -218,35 +219,32 @@ class Site_Command extends EE_Site_Command {
 		$this->site['root'] = WEBROOT . $this->site['name'];
 		$this->level        = 1;
 		try {
-			EE\Siteutils\create_site_root( $this->site['root'], $this->site['name'] );
+			EE\SiteUtils\create_site_root( $this->site['root'], $this->site['name'] );
 			$this->level = 2;
-			EE\Siteutils\setup_site_network( $this->site['name'] );
+			EE\SiteUtils\setup_site_network( $this->site['name'] );
 			$this->level = 3;
 			$this->configure_site_files();
 
-			EE\Siteutils\start_site_containers( $this->site['root'] );
+			EE\SiteUtils\start_site_containers( $this->site['root'] );
 
-			EE\Siteutils\create_etc_hosts_entry( $this->site['name'] );
+			EE\SiteUtils\create_etc_hosts_entry( $this->site['name'] );
 			if ( ! $this->skip_chk ) {
 				$this->level = 4;
-				EE\Siteutils\site_status_check( $this->site['name'] );
+				EE\SiteUtils\site_status_check( $this->site['name'] );
+			}
+
+			EE\SiteUtils\add_site_redirects( $this->site['name'], false );
+			EE\SiteUtils\reload_proxy_configuration();
+
+			if ( $this->ssl ) {
+				$this->init_ssl( $this->site['name'], $this->site['root'], $this->ssl, $this->ssl_wildcard );
+
+				EE\SiteUtils\add_site_redirects( $this->site['name'], true );
+				EE\SiteUtils\reload_proxy_configuration();
 			}
 		} catch ( Exception $e ) {
 			$this->catch_clean( $e );
 		}
-		EE::debug( 'Starting SSL procedure' );
-
-		if ( 'le' === $this->ssl ) {
-			EE::debug( 'Initializing LE' );
-			$this->init_le( $this->site['name'], $this->site['root'], $this->ssl_wildcard );
-		} elseif ( 'inherit' === $this->ssl ) {
-			EE::debug( 'Inheriting certs' );
-			$this->inherit_certs( $this->site['name'], $this->ssl_wildcard );
-		} else {
-			EE::error( "Unrecognized value in --ssl flag: $this->ssl" );
-		}
-
-		EE\Siteutils\add_site_redirects( $this->site['name'], $this->ssl );
 
 		$this->info( [ $this->site['name'] ], [] );
 		$this->create_site_db_entry();
